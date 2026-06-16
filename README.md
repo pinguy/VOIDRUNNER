@@ -12,6 +12,8 @@ The point is that it is still recognisably a game.
 > The fullscreen BCJ+tight-stub build measured **32,743 bytes**, leaving **25 bytes** under the 32 KiB line.
 > Earlier builds lived in the 40K class; this is now a proper 32K-class release.
 
+[![UI Preview](https://github.com/pinguy/VOIDRUNNER/blob/main/screenshots/Screenshot_20260616_191614.png?raw=true)](https://github.com/pinguy/VOIDRUNNER/blob/main/screenshots/Screenshot_20260616_191614.png?raw=true)
+
 ---
 
 ## What it is
