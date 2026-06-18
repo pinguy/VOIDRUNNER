@@ -496,7 +496,6 @@ static void ship_rgb(int t,f32* r,f32* g,f32* b){
     }
 }
 static void ship_color(int t){ f32 r,g,b; ship_rgb(t,&r,&g,&b); p_glColor3f(r*0.72f,g*0.72f,b*0.72f); }
-static int ship_threat_type(int t){ return t==SHIP_PIRATE || t==SHIP_ALIEN || t==SHIP_FIGHTER; }
 static void emit_ship(int t){
     /* Compact role templates. No fake seed-body variation: radar/tags carry identity,
        these shapes stay cheap and readable at flight distances. */
@@ -869,6 +868,7 @@ static void enter_system(int idx, int arrive_far){
         else if((s->eco==ECO_MINE || s->eco==ECO_REFINE) && r<70) e->type=SHIP_MINER;
         else if(r>82) e->type=SHIP_FREIGHTER;
         else e->type = (xr()%3==0? SHIP_TRADER : SHIP_POLICE);
+        e->target = e->type==SHIP_PIRATE||e->type==SHIP_FIGHTER||(e->type==SHIP_ALIEN&&(xr()&1));
         e->maxhull = e->type==SHIP_PIRATE?82:(e->type==SHIP_POLICE?125:(e->type==SHIP_ALIEN?150:(e->type==SHIP_FIGHTER?105:(e->type==SHIP_FREIGHTER?115:(e->type==SHIP_MINER?90:62)))));
         e->hull = e->maxhull;
         if(arrive_far){
@@ -978,7 +978,7 @@ static void set_crime(int lvl){
 }
 static int illegal_cargo_count(void){ return G.cargo[4] + G.cargo[5]; }
 static int cargo_value_here(void){ int v=0; System* s=&gal[G.cur]; for(int i=0;i<NCOM;i++) v+=G.cargo[i]*s->price[i]; return v; }
-static int system_safe_zone(void){ return vlen(vsub(G.station,G.ppos)) < 900.0f; }
+static int ship_hostile(Ship* e){ return e->target||(G.wanted&&e->type==SHIP_POLICE); }
 
 
 static f32 sys_dist_idx(int a,int b){
@@ -1078,7 +1078,7 @@ static void player_damage_ship(int i, f32 dmg){
     if(G.e[i].hull<=0){
         int t=G.e[i].type;
         G.e[i].alive=0;
-        if(ship_threat_type(t)){ G.credits += (t==SHIP_ALIEN)?220:(t==SHIP_FIGHTER?170:130); G.kills++; G.sys_kills[G.cur]++; sfx_play(SFX_KILL); }
+        if(G.e[i].target){ G.credits += (t==SHIP_ALIEN)?220:(t==SHIP_FIGHTER?170:130); G.kills++; G.sys_kills[G.cur]++; sfx_play(SFX_KILL); }
         else { G.credits -= 40; set_crime(t==SHIP_POLICE?2:1); sfx_play(SFX_KILL); }
         if(G.target==i) G.target=-1;
     }
@@ -1221,7 +1221,7 @@ static void update(f32 dt, const u8* ks){
     for(int i=0;i<G.ne;i++){
         Ship* e=&G.e[i]; if(!e->alive) continue;
         V3 toP = vsub(G.ppos, e->pos); f32 d=vlen(toP); V3 dir=vnorm(toP);
-        int hostile = ((e->type==SHIP_PIRATE) && !system_safe_zone()) || e->type==SHIP_ALIEN || e->type==SHIP_FIGHTER || (G.wanted && e->type==SHIP_POLICE);
+        int hostile = ship_hostile(e);
         if(e->fire_cd>0) e->fire_cd-=dt;
         if(e->radar_flash>0) e->radar_flash-=dt;
         if(hostile){
@@ -1231,8 +1231,8 @@ static void update(f32 dt, const u8* ks){
             e->vel = vadd(vmul(e->vel,0.94f), vmul(desired, dt*1.5f));
             f32 es=vlen(e->vel); if(es>280) e->vel=vmul(e->vel,280/es);
             e->pos = vadd(e->pos, vmul(e->vel,dt));
-            if(d<1500 && e->fire_cd<=0){
-                f32 ch=0.07f+(1500.0f-d)/2300.0f;
+            if(d<800 && e->fire_cd<=0){
+                f32 ch=0.07f+(800.0f-d)/1100.0f;
                 int hit=frand()<ch;
                 e->fire_cd = 0.6f + frand()*0.6f;
                 e->radar_flash = 0.24f;
@@ -1680,7 +1680,7 @@ static int nearest_contact(void){
 static int nearest_hostile(void){
     int found=0; f32 bd=999999.0f;
     for(int i=0;i<G.ne;i++) if(G.e[i].alive){
-        int h=ship_threat_type(G.e[i].type)||(G.wanted&&G.e[i].type==SHIP_POLICE);
+        Ship* e=&G.e[i]; int h=ship_hostile(e);
         if(h){ f32 d=vlen(vsub(G.e[i].pos,G.ppos)); if(d<bd){bd=d;found=1;} }
     }
     return found && bd<900.0f;
@@ -1698,7 +1698,8 @@ static void draw_ship_tags(void){
         f32 r,g,b; ship_rgb(e->type,&r,&g,&b);
         const char* nm=ship_name(e->type); f32 sc=d<450.0f?1.45f:1.18f;
         text(sx-textw(nm,sc)*0.5f,sy,sc,nm,r,g,b);
-        if(d<900.0f){ char db[18]; int k=0; bnum(db,&k,(int)d); text(sx-textw(db,0.92f)*0.5f,sy+18,0.92f,db,r*0.75f,g*0.75f,b*0.75f); }
+        if(i==G.target) text(sx-14,sy+18,0.92f,"LOCK",1.0f,0.35f,0.22f);
+        else if(d<900.0f){ char db[18]; int k=0; bnum(db,&k,(int)d); text(sx-textw(db,0.92f)*0.5f,sy+18,0.92f,db,r*0.75f,g*0.75f,b*0.75f); }
     }
 }
 
@@ -1763,7 +1764,7 @@ static void draw_hud(void){
         text(W-312,82,2.0f,ship_name(t->type),t->type==SHIP_PIRATE?1.0f:0.75f,t->type==SHIP_PIRATE?0.35f:0.95f,0.65f);
         label_num(W-312,112,1.45f,"DIST",(int)td,0.70f,0.88f,0.92f);
         label_num(W-312,138,1.45f,"HULL",(int)t->hull,0.88f,0.76f,0.50f);
-        { int th=ship_threat_type(t->type)||(G.wanted&&t->type==SHIP_POLICE); text(W-312,166,1.35f,th?"STATUS HOSTILE":"STATUS NEUTRAL",th?1.0f:0.55f,th?0.35f:0.85f,0.45f); }
+        { int th=ship_hostile(t); text(W-312,166,1.35f,th?"STATUS HOSTILE":"STATUS NEUTRAL",th?1.0f:0.55f,th?0.35f:0.85f,0.45f); }
     } else {
         text(W-312,84,1.8f,"NO TARGET",0.55f,0.70f,0.72f);
         text(W-312,114,1.25f,"TAB LOCKS NEAREST CONTACT",0.38f,0.58f,0.62f);
@@ -1804,7 +1805,7 @@ static void draw_hud(void){
         V3 rel=vsub(G.e[i].pos,G.ppos); f32 d=vlen(rel); if(d<0.1f) d=0.1f;
         f32 fx=vdot(rel,G.pr), fy=vdot(rel,G.pu), fz=vdot(rel,G.pf);
         f32 sx=cx+clampf(fx/scan_r,-1,1)*rw*0.90f, sy=cy-clampf(fz/scan_r,-1,1)*rh*0.90f, stem=clampf(fy/700.0f,-1,1)*30.0f;
-        int host=ship_threat_type(G.e[i].type)||(G.wanted&&G.e[i].type==SHIP_POLICE);
+        int host=ship_hostile(&G.e[i]);
         int tgt=(i==G.target);
         f32 rr,gg,bb; ship_rgb(G.e[i].type,&rr,&gg,&bb);
         if(G.e[i].type==SHIP_ALIEN){ f32 q=0.55f+0.45f*f_sin(G.t*17.0f+i*1.7f); rr*=q; bb=0.72f+0.28f*q; }
