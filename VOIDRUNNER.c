@@ -2,6 +2,8 @@
  *  VOIDRUNNER  --  a galaxy small enough to fit in a rounding error,
  *                  but alive enough to rob you blind.
  *  codename: STARCUNT
+ *  Copyright 2026 Antoni Norman.
+ *  Licensed under the Apache License, Version 2.0; see examples/LICENSE.
  *
  *  Native Linux procedural space-trading / combat sim, built under the same
  *  demoscene constraint philosophy as .murkk:
@@ -571,7 +573,7 @@ static void emit_sphere(int lat, int lon){
 }
 
 /* ============================ game state ================================== */
-enum { ST_TITLE, ST_FLIGHT, ST_MARKET, ST_STATUS, ST_DATA, ST_MANIFEST, ST_EQUIP, ST_MAP, ST_DEAD };
+enum { ST_TITLE, ST_FLIGHT, ST_MARKET, ST_STATUS, ST_DATA, ST_MANIFEST, ST_EQUIP, ST_MAP, ST_DEAD, ST_JUMP };
 typedef struct {
     V3 pos, vel; f32 hull, maxhull; int type; int alive;
     f32 fire_cd, radar_flash; int target;            /* AI */
@@ -623,10 +625,10 @@ static struct {
     Missile missile[MAXM];
     int  target;             /* targeted enemy index, -1 none */
     int  docked_ok;
-    int  docked, alert_code, map_back_state; f32 alert_t, scan_t;
-    int  kills, legal, rating;          /* Elite-style progression */
+    int  docked, alert_code, map_back_state; f32 alert_t;
+    int  kills, legal;          /* Elite-style progression */
     int  sys_kills[NSYS];
-    int  missiles, laser_level, ecm, scoops, escape_pod, energy_bomb, dockcomp, extra_energy, mining_laser, galdrive;
+    int  missiles, laser_level, extra_energy;
     /* market/map cursor */
     int  msel;               /* selected commodity row */
     int  esel;               /* selected equipment row */
@@ -838,18 +840,18 @@ static void enter_system(int idx, int arrive_far){
     G.docked = arrive_far?0:1;
     G.alert_code = arrive_far?1:0; G.alert_t = arrive_far?3.0f:0.0f;
 
-    int cargounits=0, cargovalue=0;
-    for(int c=0;c<NCOM;c++){ cargounits+=G.cargo[c]; cargovalue += G.cargo[c]*s->price[c]; }
-    int illegal = G.cargo[4];
-    int threat = s->danger + cargounits/4 + illegal*2 + (s->eco==ECO_LAWLESS?2:0) + (s->gov==GOV_ANARCHY?2:0);
+    int cargounits=0;
+    for(int c=0;c<NCOM;c++) cargounits+=G.cargo[c];
+    int illegal = G.cargo[4], wild=(s->eco==ECO_LAWLESS)+(s->gov==GOV_ANARCHY);
+    int threat = s->danger + illegal*2 + wild*2;
+    if(s->danger>5 || wild) threat += cargounits/6;
     if(threat>12) threat=12;
 
-    /* Police scan pressure: not constant, but smuggling into lawful space can bite during the run. */
-    G.scan_t = 0;
-    if(arrive_far && illegal>0 && s->gov!=GOV_ANARCHY){ G.scan_t = 7.0f + frand()*13.0f; G.alert_code=3; G.alert_t=4.0f; }
+    /* Smuggling into lawful space can still put the run on notice. */
+    if(arrive_far && illegal>0 && s->gov!=GOV_ANARCHY){ G.alert_code=3; G.alert_t=4.0f; }
 
     /* enemies: danger + cargo value make the run-in matter */
-    G.ne = arrive_far ? (1 + threat/3 + (xr()%2)) : (s->danger>6 ? 1+(xr()%2) : 0);
+    G.ne = arrive_far ? (threat<3 ? (xr()%2) : 1 + threat/2 + (xr()%2)) : (s->danger>6 ? 1+(s->danger/5)+(xr()%2) : 0);
     if(G.ne>MAXE) G.ne=MAXE;
     V3 route=vnorm(vsub(G.station,G.ppos));
     V3 side=vnorm(vcross(route,v(0,1,0))); if(vlen(side)<0.01f) side=v(1,0,0);
@@ -857,19 +859,21 @@ static void enter_system(int idx, int arrive_far){
     for(int i=0;i<G.ne;i++){
         Ship* e=&G.e[i];
         e->alive=1; e->target=-1; e->fire_cd=frand(); e->radar_flash=0;
-        int pirate_roll = 2 + s->danger + cargounits/5 + illegal*3 + (cargovalue>1200?2:0);
+        int pirate_roll = s->danger + illegal*3 + wild*2 + ((s->danger>5 || wild)?cargounits/6:0);
         if(pirate_roll>9) pirate_roll=9;
         int r=(int)(xr()%100);
-        if(arrive_far && (xr()%22)==0) e->type=SHIP_ALIEN;
+        int forced = arrive_far && s->danger>5 && i < ((threat-3)/2 + (s->danger>7));
+        if(arrive_far && (xr()%(threat>7?18:26))==0) e->type=SHIP_ALIEN;
         else if((G.wanted||G.kills>5) && arrive_far && r<18) e->type=SHIP_FIGHTER;       /* bounty hunter */
-        else if(r < pirate_roll*8 || (s->gov==GOV_ANARCHY && r<46)) e->type=SHIP_PIRATE;
+        else if(forced || r < pirate_roll*8 || (s->gov==GOV_ANARCHY && r<46)) e->type=SHIP_PIRATE;
         else if((s->eco==ECO_MINE || s->eco==ECO_REFINE) && r<70) e->type=SHIP_MINER;
         else if(r>82) e->type=SHIP_FREIGHTER;
         else e->type = (xr()%3==0? SHIP_TRADER : SHIP_POLICE);
         e->maxhull = e->type==SHIP_PIRATE?82:(e->type==SHIP_POLICE?125:(e->type==SHIP_ALIEN?150:(e->type==SHIP_FIGHTER?105:(e->type==SHIP_FREIGHTER?115:(e->type==SHIP_MINER?90:62)))));
         e->hull = e->maxhull;
         if(arrive_far){
-            f32 along=650.0f+frand()*2700.0f;
+            f32 span=3100.0f-threat*150.0f; if(span<900.0f) span=900.0f;
+            f32 along=450.0f+frand()*span;
             e->pos = vadd(G.ppos, vadd(vmul(route,along), vadd(vmul(side,srand2()*760.0f), vmul(up,srand2()*420.0f))));
             e->vel = vadd(vmul(route, e->type==SHIP_PIRATE?-25.0f:35.0f), vmul(side,srand2()*70.0f));
         } else {
@@ -927,41 +931,31 @@ static const char* laser_name(void){
 static int fuel_cost(void){ int n=G.maxfuel-G.fuel; return n>0?n*2:0; }
 static int missile_cost(void){ return 30; }
 static int cargo_bay_cost(void){ return 400; }
-static int ecm_cost(void){ return 600; }
-static int pulse_cost(void){ return 400; }
 static int beam_cost(void){ return 1000; }
-static int scoop_cost(void){ return 525; }
-static int escape_cost(void){ return 1000; }
-static int bomb_cost(void){ return 900; }
 static int extra_energy_cost(void){ return 1500; }
 static int military_cost(void){ return 6000; }
-static int mining_cost(void){ return 800; }
 
-#define NEQ 12
+#define NEQ 6
 static const char* EQNAME[NEQ]={
-    "FUEL", "LANCE DART MISSILE", "HOLD BLADDER", "GHOSTBURST ECM",
-    "SPITLIGHT PULSE LASER", "CUTTER BEAM LASER", "SUNJAW FUEL SCOOPS",
-    "COFFIN SEED ESCAPE POD", "WHITEOUT CHARGE", "COPPER ENERGY UNIT",
-    "LANCE-90 MILITARY LASER", "ROCKSPLITTER MINING LASER"
+    "FUEL", "LANCE DART MISSILE", "HOLD BLADDER", "CUTTER BEAM LASER",
+    "COPPER ENERGY UNIT", "LANCE-90 MILITARY LASER"
 };
 static int eq_tech(int i){
-    static const int t[NEQ]={0,0,0,2,3,4,5,6,7,8,10,10};
+    static const int t[NEQ]={0,0,0,4,8,10};
     return t[i];
 }
 static int eq_cost(int i){
     switch(i){
         case 0:return fuel_cost(); case 1:return missile_cost(); case 2:return cargo_bay_cost();
-        case 3:return ecm_cost(); case 4:return pulse_cost(); case 5:return beam_cost();
-        case 6:return scoop_cost(); case 7:return escape_cost(); case 8:return bomb_cost();
-        case 9:return extra_energy_cost(); case 10:return military_cost(); default:return mining_cost();
+        case 3:return beam_cost(); case 4:return extra_energy_cost();
+        default:return military_cost();
     }
 }
 static int eq_present(int i){
     switch(i){
         case 0:return G.fuel>=G.maxfuel; case 1:return G.missiles>=4; case 2:return G.cargo_max>=35;
-        case 3:return G.ecm; case 4:return G.laser_level>=1; case 5:return G.laser_level>=2;
-        case 6:return G.scoops; case 7:return G.escape_pod; case 8:return G.energy_bomb;
-        case 9:return G.extra_energy; case 10:return G.laser_level>=3; default:return G.mining_laser;
+        case 3:return G.laser_level>=2; case 4:return G.extra_energy;
+        default:return G.laser_level>=3;
     }
 }
 static int eq_available(int i){ int t=eq_tech(i); return t==0 || gal[G.cur].tech>=t; }
@@ -973,15 +967,9 @@ static void buy_equipment_item(int i){
         case 0: G.fuel=G.maxfuel; break;
         case 1: if(G.missiles<4) G.missiles++; break;
         case 2: G.cargo_max=35; break;
-        case 3: G.ecm=1; break;
-        case 4: if(G.laser_level<1) G.laser_level=1; break;
-        case 5: G.laser_level=2; break;
-        case 6: G.scoops=1; break;
-        case 7: G.escape_pod=1; break;
-        case 8: G.energy_bomb=1; break;
-        case 9: G.extra_energy=1; G.maxshield+=20; G.shield=G.maxshield; break;
-        case 10:G.laser_level=3; break;
-        case 11:G.mining_laser=1; break;
+        case 3: G.laser_level=2; break;
+        case 4: G.extra_energy=1; G.maxshield+=20; G.shield=G.maxshield; break;
+        case 5: G.laser_level=3; break;
     }
 }
 static void set_crime(int lvl){
@@ -1338,8 +1326,7 @@ static void update_map(const u8* ks){
     if(edge(ks,SC_RETURN) || edge(ks,SC_J)){
         if(can_jump_idx(G.mapsel)){
             G.fuel -= fuel_need_idx(G.cur,G.mapsel);
-            enter_system(G.mapsel,1); sfx_play(SFX_JUMP); if(G.alert_code==2||G.alert_code==3) sfx_play(SFX_WARN);
-            G.state=ST_FLIGHT; p_SDL_SetRelativeMouseMode(1);
+            G.target=G.mapsel; G.alert_t=1.85f; G.state=ST_JUMP; sfx_play(SFX_JUMP);
         }
     }
     if(edge(ks,SC_5) || edge(ks,SC_6)){ G.state=ST_DATA; p_SDL_SetRelativeMouseMode(0); }
@@ -1834,7 +1821,7 @@ static void draw_hud(void){
 
     draw_ship_tags();
     if(G.alert_t>0){
-        const char* msg = G.alert_code==1?"JUMP EXIT":G.alert_code==2?"HOSTILES ON ROUTE":G.alert_code==3?"POLICE SCAN ACTIVE":G.alert_code==4?"ILLEGAL CARGO FOUND":G.alert_code==5?"DOCKING COMPLETE":G.alert_code==6?"LAUNCH CLEAR":"";
+        const char* msg = G.alert_code==1?"JUMP EXIT":G.alert_code==2?"HOSTILES ON ROUTE":G.alert_code==3?"CONTRABAND TRACE":G.alert_code==5?"DOCKING COMPLETE":G.alert_code==6?"LAUNCH CLEAR":"";
         text(W/2-textw(msg,1.75f)/2, 72, 1.75f, msg, 0.95f,0.78f,0.38f);
     }
     if(G.wanted) text(W/2-textw("WANTED",2.0f)/2, 34, 2.0f, "WANTED", 0.95f,0.3f,0.3f);
@@ -1921,11 +1908,9 @@ static void draw_status_page(void){
     text(W-520,100,1.7f,"FITTED EQUIPMENT",0.62f,0.96f,0.76f);
     text(W-500,138,1.55f,laser_name(),0.78f,0.92f,0.72f);
     label_num(W-500,170,1.55f,"MISSILES",G.missiles,0.75f,0.82f,0.95f);
-    text(W-500,202,1.45f,G.ecm?"GHOSTBURST ECM":"NO ECM",G.ecm?0.60f:0.40f,G.ecm?0.90f:0.50f,0.65f);
-    text(W-500,230,1.45f,G.scoops?"SUNJAW SCOOPS":"NO FUEL SCOOPS",G.scoops?0.60f:0.40f,G.scoops?0.90f:0.50f,0.65f);
-    text(W-500,258,1.45f,G.extra_energy?"COPPER BANK":"STD GENERATOR",G.extra_energy?0.75f:0.45f,G.extra_energy?0.88f:0.55f,0.55f);
-    text(W-500,286,1.45f,"DOCKING: F WHEN IN RANGE",0.55f,0.78f,0.68f);
-    text(W-500,314,1.45f,"JUMP: SELECT ROUTE ON CHART",0.55f,0.70f,0.78f);
+    text(W-500,202,1.45f,G.extra_energy?"COPPER BANK":"STD GENERATOR",G.extra_energy?0.75f:0.45f,G.extra_energy?0.88f:0.55f,0.55f);
+    text(W-500,230,1.45f,"DOCKING: F WHEN IN RANGE",0.55f,0.78f,0.68f);
+    text(W-500,258,1.45f,"JUMP: SELECT ROUTE ON CHART",0.55f,0.70f,0.78f);
 
     draw_station_nav(H);
     end2d();
@@ -2139,6 +2124,32 @@ static void draw_map(void){
     else if(G.mapsel==G.cur) text(60,H-24,1.7f,"NO DESTINATION SELECTED",0.9f,0.55f,0.4f);
     else if(d>G.jump_range) text(60,H-24,1.7f,"OUT OF JUMP RANGE",0.95f,0.45f,0.35f);
     else text(60,H-24,1.7f,"BUY FUEL IN EQUIP",0.95f,0.45f,0.35f);
+    end2d();
+}
+
+static void draw_jump_screen(void){
+    begin2d();
+    f32 W=G.win_w,H=G.win_h,cx=W*0.5f,cy=H*0.5f;
+    p_glColor4f(0.0f,0.01f,0.02f,0.96f);
+    p_glBegin(GL_QUADS);p_glVertex2f(0,0);p_glVertex2f(W,0);p_glVertex2f(W,H);p_glVertex2f(0,H);p_glEnd();
+    f32 m=W>H?W:H;
+    p_glEnable(GL_BLEND); p_glBlendFunc(GL_SRC_ALPHA,GL_ONE);
+    for(int q=0;q<2;q++){
+        seed(hash32(gal[G.target].seed));
+        p_glLineWidth(q?2.8f:1.0f);
+        p_glBegin(GL_LINES);
+        for(int i=0;i<144;i++){
+            f32 a=frand()*TAU+G.t*0.07f, p=frand()+G.t*(q?4.6f:2.7f);
+            p-=f_floor(p);
+            a += (frand()-0.5f)*0.13f*f_sin(G.t*5.0f+i);
+            f32 r=(0.055f+p*p*0.72f)*m, l=(0.04f+p*0.36f)*m, c=(0.18f+p*0.82f)*(q?1.1f:0.45f);
+            p_glColor4f(c*0.58f,c*0.76f,c, q?0.92f:0.26f);
+            p_glVertex2f(cx+f_cos(a)*r,cy+f_sin(a)*r);
+            p_glVertex2f(cx+f_cos(a)*(r+l),cy+f_sin(a)*(r+l));
+        }
+        p_glEnd();
+    }
+    p_glDisable(GL_BLEND); p_glLineWidth(1.0f);
     end2d();
 }
 
@@ -2402,6 +2413,7 @@ int main(int argc, char** argv){
         u32 now=p_SDL_GetTicks(); f32 dt=(now-last)/1000.0f; last=now;
         if(dt>0.05f) dt=0.05f;
         if(dt<=0) dt=0.001f;
+        if(G.alert_t>0) G.alert_t-=dt;
         while(p_SDL_PollEvent(ev)){
             u32 et=*(u32*)ev;
             if(et==SDL_QUIT) running=0;
@@ -2423,6 +2435,10 @@ int main(int argc, char** argv){
             case ST_MANIFEST: update_manifest(ks); break;
             case ST_EQUIP: update_equip(ks); break;
             case ST_MAP:    update_map(ks); break;
+            case ST_JUMP:
+                G.t += dt;
+                if(G.alert_t<=0){ enter_system(G.target,1); if(G.alert_code==2||G.alert_code==3) sfx_play(SFX_WARN); G.state=ST_FLIGHT; p_SDL_SetRelativeMouseMode(1); }
+                break;
             case ST_DEAD:
                 if(edge(ks,SC_RETURN)){
                     G.hull=G.maxhull; G.shield=G.maxshield; G.wanted=0; G.legal=0;
@@ -2449,6 +2465,7 @@ int main(int argc, char** argv){
         if(G.state==ST_MANIFEST) draw_manifest();
         if(G.state==ST_EQUIP) draw_equipment();
         if(G.state==ST_MAP)    draw_map();
+        if(G.state==ST_JUMP)   draw_jump_screen();
         if(G.state==ST_DEAD)   draw_dead();
         p_SDL_GL_SwapWindow(win);
     }
