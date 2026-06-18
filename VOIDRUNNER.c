@@ -1225,21 +1225,21 @@ static void update(f32 dt, const u8* ks){
         if(e->fire_cd>0) e->fire_cd-=dt;
         if(e->radar_flash>0) e->radar_flash-=dt;
         if(hostile){
-            f32 want = (e->hull < e->maxhull*0.3f)? -200 : (d>260? 160 : (d<90? -90: 40));
-            V3 desired = vmul(dir, want);
-            /* strafe a little so it isn't a head-on jouster */
+            f32 want = (e->hull < e->maxhull*0.3f)? -230 : (d>760? 230 : (d<310? -75: 55));
             V3 side = vnorm(vcross(dir, v(0,1,0)));
-            desired = vadd(desired, vmul(side, f_sin(G.t*1.7f+i)*70));
-            e->vel = vadd(vmul(e->vel,0.95f), vmul(desired, dt*1.2f));
-            f32 es=vlen(e->vel); if(es>240) e->vel=vmul(e->vel,240/es);
+            V3 desired = vadd(vmul(dir, want), vmul(side, f_sin(G.t*1.5f+i)*(d>700?45:95)));
+            e->vel = vadd(vmul(e->vel,0.94f), vmul(desired, dt*1.5f));
+            f32 es=vlen(e->vel); if(es>280) e->vel=vmul(e->vel,280/es);
             e->pos = vadd(e->pos, vmul(e->vel,dt));
-            /* fire only once they are close; edge shots are intentionally sloppy */
-            if(d<360 && e->fire_cd<=0){
-                e->fire_cd = 0.7f + frand()*0.5f;
+            if(d<1500 && e->fire_cd<=0){
+                f32 ch=0.07f+(1500.0f-d)/2300.0f;
+                int hit=frand()<ch;
+                e->fire_cd = 0.6f + frand()*0.6f;
                 e->radar_flash = 0.24f;
                 V3 mz = vadd(e->pos, vmul(dir,3.0f));
-                add_beam(mz, vadd(mz, vmul(dir, d)), 1);
-                if(frand() < 0.06f + (360.0f-d)/560.0f){
+                V3 aim = hit?dir:vnorm(vadd(dir,vmul(side,srand2()*(0.05f+d*0.00011f))));
+                add_beam(mz, vadd(mz, vmul(aim, d)), 1);
+                if(hit){
                     f32 dmg = 6 + frand()*8;
                     if(G.shield>0){ f32 sd=dmg*shield_hit_scale(); G.shield-=sd; if(G.shield<0){ G.hull+=G.shield; G.shield=0; } }
                     else G.hull-=dmg*1.18f;
