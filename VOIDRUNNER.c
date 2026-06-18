@@ -1233,13 +1233,13 @@ static void update(f32 dt, const u8* ks){
             e->vel = vadd(vmul(e->vel,0.95f), vmul(desired, dt*1.2f));
             f32 es=vlen(e->vel); if(es>240) e->vel=vmul(e->vel,240/es);
             e->pos = vadd(e->pos, vmul(e->vel,dt));
-            /* fire if roughly aimed and in range */
-            if(d<520 && e->fire_cd<=0){
+            /* fire only once they are close; edge shots are intentionally sloppy */
+            if(d<360 && e->fire_cd<=0){
                 e->fire_cd = 0.7f + frand()*0.5f;
                 e->radar_flash = 0.24f;
                 V3 mz = vadd(e->pos, vmul(dir,3.0f));
                 add_beam(mz, vadd(mz, vmul(dir, d)), 1);
-                if(frand() < 0.55f - d/1600.0f){
+                if(frand() < 0.06f + (360.0f-d)/560.0f){
                     f32 dmg = 6 + frand()*8;
                     if(G.shield>0){ f32 sd=dmg*shield_hit_scale(); G.shield-=sd; if(G.shield<0){ G.hull+=G.shield; G.shield=0; } }
                     else G.hull-=dmg*1.18f;
