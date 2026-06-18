@@ -9,7 +9,7 @@ The point is not just that it is small.
 The point is that it is still recognisably a game.
 
 > Current release artefact: **32 KiB class**.
-> The fullscreen BCJ+tight-stub build measured **32,695 bytes**, leaving **73 bytes** under the 32 KiB line.
+> The fullscreen BCJ+tight-stub build measured **32,618 bytes**, leaving **150 bytes** under the 32 KiB line.
 > Earlier builds lived in the 40K class; this is now a proper 32K-class release.
 
 [![UI Preview](https://github.com/pinguy/VOIDRUNNER/blob/main/screenshots/Screenshot_20260616_191614.png?raw=true)](https://github.com/pinguy/VOIDRUNNER/blob/main/screenshots/Screenshot_20260616_191614.png?raw=true)

@@ -1085,12 +1085,6 @@ static void player_damage_ship(int i, f32 dmg){
 }
 static int missile_lock_target(void){
     int best=-1; f32 bs=0.965f;
-    /* Top-Gun-ish: basic missiles need a nose-on lock. TAB can prefer a
-       target, but it still has to be inside the seeker cone. */
-    if(G.target>=0 && G.target<G.ne && G.e[G.target].alive){
-        V3 to=vsub(G.e[G.target].pos,G.ppos); f32 d=vlen(to);
-        if(d>35 && d<1600 && vdot(vnorm(to),G.pf)>0.955f) return G.target;
-    }
     for(int i=0;i<G.ne;i++) if(G.e[i].alive){
         V3 to=vsub(G.e[i].pos,G.ppos); f32 d=vlen(to); if(d<35 || d>1500) continue;
         f32 a=vdot(vnorm(to),G.pf);
@@ -1210,12 +1204,8 @@ static void update(f32 dt, const u8* ks){
     if((mb & SDL_BUTTON_RMASK) && !(prevmb & SDL_BUTTON_RMASK)) fire_missile();
     prevmb=mb;
 
-    /* ---- target nearest (Tab) ---- */
-    if(edge(ks,SC_TAB)){
-        int best=-1; f32 bd=1e18f;
-        for(int i=0;i<G.ne;i++){ if(!G.e[i].alive)continue; f32 d=vlen(vsub(G.e[i].pos,G.ppos)); if(d<bd){bd=d;best=i;} }
-        G.target=best;
-    }
+    /* ---- target nose contact ---- */
+    G.target=missile_lock_target();
 
     /* ---- enemy AI ---- */
     for(int i=0;i<G.ne;i++){
@@ -1233,7 +1223,7 @@ static void update(f32 dt, const u8* ks){
             e->pos = vadd(e->pos, vmul(e->vel,dt));
             if(d<800 && e->fire_cd<=0){
                 f32 ch=0.07f+(800.0f-d)/1100.0f;
-                int hit=frand()<ch;
+                int hit=d<180||frand()<ch;
                 e->fire_cd = 0.6f + frand()*0.6f;
                 e->radar_flash = 0.24f;
                 V3 mz = vadd(e->pos, vmul(dir,3.0f));
@@ -1767,7 +1757,7 @@ static void draw_hud(void){
         { int th=ship_hostile(t); text(W-312,166,1.35f,th?"STATUS HOSTILE":"STATUS NEUTRAL",th?1.0f:0.55f,th?0.35f:0.85f,0.45f); }
     } else {
         text(W-312,84,1.8f,"NO TARGET",0.55f,0.70f,0.72f);
-        text(W-312,114,1.25f,"TAB LOCKS NEAREST CONTACT",0.38f,0.58f,0.62f);
+        text(W-312,114,1.25f,"NOSE LOCKS CONTACT",0.38f,0.58f,0.62f);
     }
     { int ml=missile_lock_target(); char mbuf[40]; int k=0; bcat(mbuf,&k,"LMB LASER  RMB MISSILE "); bnum(mbuf,&k,G.missiles); text(W-312,190,1.18f,mbuf,G.missiles?0.86f:0.45f,G.missiles?0.82f:0.45f,0.50f);
       text(W-312,210,1.18f,ml>=0?"MISSILE LOCK":"NO MISSILE LOCK",ml>=0?0.95f:0.50f,ml>=0?0.35f:0.55f,ml>=0?0.22f:0.58f); }
