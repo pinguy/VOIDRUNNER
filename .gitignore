@@ -1,0 +1,6 @@
+/VOIDRUNNER_raw*
+/copt-work/
+*.o
+*.raw
+*.sstrip
+*.bcj

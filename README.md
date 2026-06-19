@@ -63,10 +63,10 @@ The current release build is a **32 KiB runnable**.
 
 The size budget refers to the generated runner file, not the system libraries already present on Linux.
 
-Expected direct ELF dependency after build:
+Expected direct ELF dependency for the checked GCC 9 build:
 
 ```text
-NEEDED: libc.so.6
+NEEDED: libdl.so.2
 ```
 
 The game still expects the usual Linux runtime pieces to exist on the target system, especially SDL2, OpenGL, and `xz` for the self-extracting runner.
@@ -93,22 +93,36 @@ Press `ESC` to quit from any screen.
 A typical package contains:
 
 ```text
-voidrunner.c
+VOIDRUNNER
+VOIDRUNNER.c
 start_syscall.S
 build_asm_syscall.sh
-pack.sh
+build_gcc9_bullseye.sh
 tiny_tools/sstrip64.py
+tiny_tools/source_prepass.py
+toolchains/gcc9-bullseye/Containerfile
 compat/
+RUN_ME.sh
 REBUILD_ME.sh
 ```
 
-To rebuild:
+For the size-targeted rebuild:
 
 ```sh
 sh ./REBUILD_ME.sh
 ```
 
-The release package rebuild script verifies the packed runner after generation.
+That uses the bundled GCC 9 Bullseye wrapper, writes `./VOIDRUNNER`, and reproduces the checked runner on the reference setup.
+
+The wrapper uses Podman and `toolchains/gcc9-bullseye/Containerfile`. Bullseye keeps `dlopen` / `dlsym` in `libdl`, so the checked build uses `-ldl`.
+
+For host-toolchain experiments without the GCC 9 container:
+
+```sh
+OUT=/tmp/voidrunner-host sh ./build_asm_syscall.sh VOIDRUNNER.c
+```
+
+On newer glibc this can produce a `libc.so.6`-only raw ELF, but it is not the measured 32 KiB release artefact.
 
 ---
 

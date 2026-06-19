@@ -8,7 +8,7 @@
  *  Native Linux procedural space-trading / combat sim, built under the same
  *  demoscene constraint philosophy as .murkk:
  *      - one C game core, no asset files (everything generated at runtime)
- *      - direct dependency: libc.so.6 only
+ *      - checked GCC 9 runner direct dependency: libdl.so.2
  *      - SDL2 + OpenGL dlopen()'d at runtime (not in NEEDED)
  *      - own sin/cos/sqrt/atan2  ->  no libm either
  *      - raw _start in start_syscall.S, raw syscall exit
