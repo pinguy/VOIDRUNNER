@@ -12,7 +12,23 @@ The point is that it is still recognisably a game.
 > The fullscreen BCJ+tight-stub build measured **32,760 bytes**, leaving **8 bytes** under the 32 KiB line.
 > Earlier builds lived in the 40K class; this is now a proper 32K-class release.
 
-[![UI Preview](https://github.com/pinguy/VOIDRUNNER/blob/main/screenshots/Screenshot_20260616_191614.png?raw=true)](https://github.com/pinguy/VOIDRUNNER/blob/main/screenshots/Screenshot_20260616_191614.png?raw=true)
+## Screenshots
+
+| Title | Command Slate |
+| --- | --- |
+| ![VOIDRUNNER title screen](screenshots/title.png) | ![VOIDRUNNER command slate](screenshots/station-command.png) |
+
+| Market | Galaxy Map |
+| --- | --- |
+| ![VOIDRUNNER market screen](screenshots/market.png) | ![VOIDRUNNER galaxy map](screenshots/galaxy-map.png) |
+
+| Launch Run | Hostile Route |
+| --- | --- |
+| ![VOIDRUNNER launch flight](screenshots/flight-launch.png) | ![VOIDRUNNER hostile route combat](screenshots/hostile-route.png) |
+
+| Void Transit |
+| --- |
+| ![VOIDRUNNER jump tunnel](screenshots/jump.png) |
 
 ---
 
